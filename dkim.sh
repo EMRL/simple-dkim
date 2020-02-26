@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
+
+###############################################################################
+# dkim.sh
+#   A simple script for creating DKIM keys
 #
-# A simple script for creating DKIM keys
+# Arguments:
+#   [domain]    The top level domain the key is being made for. Do not include
+#               subdomains. Ex. `./dkim.sh emrl.com` 
+###############################################################################  
+
+# 
 #
 # TODO: Add full configuration variables
 #       Add environment/dependency checks
@@ -14,12 +23,12 @@ DKIM_NAME="default"
 # No root, no fun
 if [[ "${EUID}" -ne 0 ]]; then
   echo "You must have root access to create DKIM keys." 2>&1
-  exit 1
+  exit 2
 fi
 
 if [[ -z "${1}" ]]; then
     echo "Domain parameter required"
-    exit 1
+    exit 3
 else
     tld="${1}"
 fi
