@@ -13,12 +13,16 @@
 #
 # TODO: Add full configuration variables
 #       Add environment/dependency checks
+#       Add support for system that are not booted used systemd as init system
 
 # Configuration
 #
 # The DKIM settings below should work for anyone
 DKIM_SELECTOR="sel01"
 DKIM_NAME="default"
+OPENDKIM_FILES="/etc/opendkim"
+OPENDKIM_USER="opendkim"
+OPENDKIM_GROUP="opendkim"
 
 # No root, no fun
 if [[ "${EUID}" -ne 0 ]]; then
@@ -35,6 +39,19 @@ fi
 
 # Setup functions
 
+function check_env() {
+    if [[ ! -w "${OPENDKIM_FILES}" ]]; then
+        echo "configured path ${OPENDKIM_FILES} does not exist or is not writable"
+        exit 4
+    fi
+
+    if [[ ! command -v opendkim-genkey &> /dev/null ]]; then
+        echo "Can't find required command 'opendkim-genkey'"
+        exit 5
+    exit
+fi
+}
+
 function display_dkim() {
     # Print to screen
     echo
@@ -47,15 +64,16 @@ function display_dkim() {
 
 function create_record() {
     # Create DNS record
-    grep -o '".*"' "/etc/opendkim/keys/${tld}/${DKIM_SELECTOR}.txt" | sed 's/"//g' > /tmp/dkim-${tld}.tmp
+    grep -o '".*"' "${OPENDKIM_FILES}/keys/${tld}/${DKIM_SELECTOR}.txt" | sed 's/"//g' > /tmp/dkim-${tld}.tmp
     sed -i ':a;N;$!ba;s/[\n \t]//g' "/tmp/dkim-${tld}.tmp"
     DKIM_KEY="$(cat /tmp/dkim-${tld}.tmp)"
 }
 
 # Run the script
+check_env
 
 # Check for exiting key
-if [[ -f "/etc/opendkim/keys/${tld}/${DKIM_SELECTOR}.txt" ]]; then
+if [[ -f "${OPENDKIM_FILES}/keys/${tld}/${DKIM_SELECTOR}.txt" ]]; then
     echo "There appears to be an existing key for ${tld}"
     echo
     create_record
@@ -65,21 +83,21 @@ fi
 
 # Create key
 echo "Creating key..."
-sudo mkdir "/etc/opendkim/keys/${tld}"
-sudo opendkim-genkey -D "/etc/opendkim/keys/${tld}" -d "${tld}" -s ${DKIM_SELECTOR}
+sudo mkdir "${OPENDKIM_FILES}/keys/${tld}"
+sudo opendkim-genkey -D "${OPENDKIM_FILES}/keys/${tld}" -d "${tld}" -s ${DKIM_SELECTOR}
 sleep 2
 
 # Set permissions
 echo "Setting permissions..."
-sudo chown -R opendkim:opendkim "/etc/opendkim/keys/${tld}"
-sudo chmod 640 "/etc/opendkim/keys/${tld}/${DKIM_SELECTOR}.private"
-sudo chmod 644 "/etc/opendkim/keys/${tld}/${DKIM_SELECTOR}.txt"
+sudo chown -R "${OPENDKIM_USER}":"${OPENDKIM_GROUP}" "${OPENDKIM_FILES}/keys/${tld}"
+sudo chmod 640 "${OPENDKIM_FILES}/keys/${tld}/${DKIM_SELECTOR}.private"
+sudo chmod 644 "${OPENDKIM_FILES}/keys/${tld}/${DKIM_SELECTOR}.txt"
 sleep 2
 
 # Setup tables
 echo "Configuring tables..."
-sudo echo "${DKIM_SELECTOR}._dkim.${tld} ${tld}:${DKIM_NAME}:/etc/opendkim/keys/${tld}/${DKIM_SELECTOR}.private" >> /etc/opendkim/KeyTable
-sudo echo "*@${tld} ${DKIM_SELECTOR}._dkim.${tld}" >> /etc/opendkim/SigningTable
+sudo echo "${DKIM_SELECTOR}._dkim.${tld} ${tld}:${DKIM_NAME}:${OPENDKIM_FILES}/keys/${tld}/${DKIM_SELECTOR}.private" >> ${OPENDKIM_FILES}/KeyTable
+sudo echo "*@${tld} ${DKIM_SELECTOR}._dkim.${tld}" >> ${OPENDKIM_FILES}/SigningTable
 sleep 2
 
 # Restarting
